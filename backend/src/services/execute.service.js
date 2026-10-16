@@ -11,7 +11,7 @@ const TIMEOUT_MS = 10000; // 10s safety limit per compile/run step
  * stdout/stderr. Kills the process if it exceeds TIMEOUT_MS (guards
  * against infinite loops in submitted code).
  */
-function runCommand(command, args, { cwd, input = "" } = {}) {
+function runCommand(command, args, { cwd, input = "", timeoutMs = TIMEOUT_MS } = {}) {
   return new Promise((resolve) => {
     let child;
 
@@ -29,11 +29,11 @@ function runCommand(command, args, { cwd, input = "" } = {}) {
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill("SIGKILL");
-    }, TIMEOUT_MS);
+    }, timeoutMs);
 
     child.stdout.on("data", (d) => (stdout += d.toString()));
     child.stderr.on("data", (d) => (stderr += d.toString()));
-child.stdin.on("error", () => {});
+    child.stdin.on("error", () => { });
     if (input) {
       child.stdin.write(input);
     }
@@ -43,7 +43,9 @@ child.stdin.on("error", () => {});
       clearTimeout(timer);
       resolve({
         stdout,
-        stderr: timedOut ? `${stderr}\n[Execution timed out after 10s]` : stderr,
+        stderr: timedOut
+          ? `${stderr}\n[Execution timed out after ${timeoutMs / 1000}s]`
+          : stderr,
         code: timedOut ? 1 : code,
       });
     });
@@ -76,7 +78,9 @@ export const executeCode = async ({ language, code, input = "" }) => {
         const exePath = path.join(workDir, "Main.exe");
         await fs.writeFile(srcPath, code);
 
-        compileResult = await runCommand("g++", [srcPath, "-o", exePath]);
+        compileResult = await runCommand("g++", [srcPath, "-o", exePath], {
+          timeoutMs: 60000,
+        });
         if (compileResult.code !== 0) break;
 
         runResult = await runCommand(exePath, [], { input });
@@ -139,6 +143,6 @@ export const executeCode = async ({ language, code, input = "" }) => {
     };
   } finally {
     // Best-effort cleanup, don't block the response on it
-    fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
+    fs.rm(workDir, { recursive: true, force: true }).catch(() => { });
   }
 };
